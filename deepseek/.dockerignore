@@ -1,0 +1,9 @@
+**
+!Dockerfile
+!Dockerfile.proxy
+!start.sh
+!container.patch.yml
+!squid.conf
+!allowed-domains.txt
+
+

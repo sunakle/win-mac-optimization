@@ -1,0 +1,9 @@
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends squid socat ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY squid.conf /etc/squid/squid.conf
+COPY allowed-domains.txt /etc/squid/allowed-domains.txt
+USER proxy
+EXPOSE 3128
+CMD ["squid", "-N", "-d", "1", "-f", "/etc/squid/squid.conf"]
+

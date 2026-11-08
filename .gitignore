@@ -1,0 +1,14 @@
+local-assets/
+backups/
+reports/
+*.log
+*.bak
+*.env
+desktop-profile/
+node_modules/
+*.gguf
+*.zip
+*.7z
+*.rar
+
+

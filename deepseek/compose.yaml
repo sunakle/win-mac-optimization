@@ -1,0 +1,91 @@
+name: win-mac-deepseek
+services:
+  deepseek-harness:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: local/win-mac-deepseek:0.2.1-rc.5
+    container_name: winmac-dsh-agent
+    init: true
+    user: "1000:1000"
+    working_dir: /workspace
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      HTTP_PROXY: http://egress-proxy:3128
+      HTTPS_PROXY: http://egress-proxy:3128
+      http_proxy: http://egress-proxy:3128
+      https_proxy: http://egress-proxy:3128
+      NO_PROXY: localhost,127.0.0.1,::1
+      no_proxy: localhost,127.0.0.1,::1
+      NODE_USE_ENV_PROXY: "1"
+      DSH_TELEMETRY_MODE: DISABLED
+      DSH_TELEMETRY_DISABLED: "1"
+    volumes:
+      - dsh-home:/home/node
+      - type: bind
+        source: ./workspace
+        target: /workspace
+        bind:
+          create_host_path: false
+    tmpfs:
+      - /tmp:rw,exec,nosuid,nodev,size=1g,mode=1777
+    networks: [sandbox]
+    depends_on: [egress-proxy]
+    mem_limit: 4g
+    memswap_limit: 4g
+    cpus: 4
+    pids_limit: 512
+    shm_size: 256m
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --noproxy '*' -s -o /dev/null --max-time 5 http://$$(hostname -i | awk '{print $$1}'):3080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 600s
+  browser-entry:
+    image: local/win-mac-egress:1
+    container_name: winmac-dsh-browser
+    init: true
+    entrypoint: ["socat", "TCP-LISTEN:8080,bind=0.0.0.0,reuseaddr,fork", "TCP:deepseek-harness:3080"]
+    user: "13:13"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ports:
+      - "127.0.0.1:3080:8080"
+    networks: [sandbox, internet]
+    depends_on: [deepseek-harness]
+    mem_limit: 64m
+    cpus: 0.5
+    pids_limit: 96
+    restart: "no"
+  egress-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    image: local/win-mac-egress:1
+    container_name: winmac-dsh-egress
+    init: true
+    user: "13:13"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
+      - /var/log/squid:rw,nosuid,nodev,noexec,size=16m,uid=13,gid=13,mode=0700
+      - /var/spool/squid:rw,nosuid,nodev,noexec,size=16m,uid=13,gid=13,mode=0700
+    networks: [sandbox, internet]
+    mem_limit: 256m
+    cpus: 1
+    pids_limit: 64
+    restart: "no"
+networks:
+  sandbox:
+    internal: true
+  internet: {}
+volumes:
+  dsh-home: {}
+

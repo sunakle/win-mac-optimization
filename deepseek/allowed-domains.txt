@@ -1,0 +1,16 @@
+.deepseek.com
+.npmjs.org
+.npmjs.com
+.pnpm.io
+.nodejs.org
+.github.com
+.githubusercontent.com
+.githubassets.com
+.pypi.org
+.pythonhosted.org
+.python.org
+.debian.org
+cdn.playwright.dev
+playwright.download.prss.microsoft.com
+api.dsh-plugin.org
+
