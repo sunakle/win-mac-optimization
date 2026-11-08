@@ -4,7 +4,8 @@ param(
     [switch]$Apply,
     [switch]$InstallApps,
     [string]$WallpaperFile,
-    [string]$TaskbarXZip
+    [string]$TaskbarXZip,
+    [string]$IconDirectory
 )
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'This installer requires Windows.' }
@@ -14,6 +15,20 @@ if (-not $WallpaperFile) { $WallpaperFile = Join-Path $assets 'wallpaper.png' }
 if (-not $TaskbarXZip) { $TaskbarXZip = Join-Path $assets 'TaskbarX.zip' }
 $target = Join-Path $env:LOCALAPPDATA 'WinMacRestore'
 $icon = Join-Path $target 'Assets\BlueFolder.ico'
+$iconTargets = @{'3'=($icon+',0');'4'=($icon+',0')}
+if ($IconDirectory) {
+    $IconDirectory = (Resolve-Path -LiteralPath $IconDirectory -ErrorAction Stop).Path
+    foreach ($number in @('3','4')) {
+        $sourceIcon = Join-Path $IconDirectory ($number+'.ico')
+        if (-not (Test-Path -LiteralPath $sourceIcon -PathType Leaf)) { throw "Missing icon: $sourceIcon" }
+        $iconTargets[$number] = (Join-Path $target ('Assets\Icons\'+$number+'.ico'))+',0'
+    }
+    foreach ($number in @('8','9','11')) {
+        if (Test-Path -LiteralPath (Join-Path $IconDirectory ($number+'.ico')) -PathType Leaf) {
+            $iconTargets[$number] = (Join-Path $target ('Assets\Icons\'+$number+'.ico'))+',0'
+        }
+    }
+}
 $isWin10 = [Environment]::OSVersion.Version.Build -lt 22000
 
 $settings = @(
@@ -22,9 +37,16 @@ $settings = @(
     @{Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'; Name='HideFileExt'; Value=0; Kind='DWord'},
     @{Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'; Name='ShowInfoTip'; Value=0; Kind='DWord'},
     @{Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'; Name='ShowTaskViewButton'; Value=0; Kind='DWord'},
-    @{Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons'; Name='3'; Value=($icon+',0'); Kind='String'},
-    @{Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons'; Name='4'; Value=($icon+',0'); Kind='String'}
+    @{Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons'; Name='3'; Value=$iconTargets['3']; Kind='String'},
+    @{Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons'; Name='4'; Value=$iconTargets['4']; Kind='String'}
 )
+if ($IconDirectory) {
+    foreach ($number in @('8','9','11')) {
+        if ($iconTargets.ContainsKey($number)) {
+            $settings += @{Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Icons'; Name=$number; Value=$iconTargets[$number]; Kind='String'}
+        }
+    }
+}
 if ($isWin10) {
     $settings += @(
         @{Path='HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'; Name='TaskbarSmallIcons'; Value=1; Kind='DWord'},
@@ -38,7 +60,7 @@ if ($existingIcon) {
     $existingFile = $existingIcon -replace ',\d+$',''
     $preserveIcon = (Test-Path -LiteralPath $existingFile -PathType Leaf) -and ($existingFile -ne $icon)
 }
-if ($preserveIcon) { $settings = @($settings | Where-Object { $_.Path -notlike '*\Shell Icons' -or $_.Name -notin @('3','4') }) }
+if ($preserveIcon -and -not $IconDirectory) { $settings = @($settings | Where-Object { $_.Path -notlike '*\Shell Icons' -or $_.Name -notin @('3','4') }) }
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 if (Test-Path -LiteralPath $TaskbarXZip) {
     $settings += @{Path=$runKey; Name='MacStyleTaskbarCenter'; Value=$null; Kind='String'}
@@ -53,7 +75,7 @@ function Get-SavedValue($path, $name) {
 }
 
 Write-Host 'Plan:'
-Write-Host ('  Windows: dark theme, '+$(if($preserveIcon){'keep existing folder icon'}else{'blue folder icon'})+', Explorer settings' + $(if($isWin10){', small taskbar, no weather'}else{''}))
+Write-Host ('  Windows: dark theme, '+$(if($IconDirectory){'custom folder icons'}elseif($preserveIcon){'keep existing folder icon'}else{'blue folder icon'})+', Explorer settings' + $(if($isWin10){', small taskbar, no weather'}else{''}))
 Write-Host ('  Wallpaper: ' + $(if(Test-Path -LiteralPath $WallpaperFile){$WallpaperFile}else{'skip (no local-assets/wallpaper.png)'}))
 Write-Host ('  TaskbarX: ' + $(if(Test-Path -LiteralPath $TaskbarXZip){$TaskbarXZip}else{'skip (no local-assets/TaskbarX.zip)'}))
 Write-Host ('  Apps: ' + $(if($InstallApps){'WinGet packages selected'}else{'skip'}))
@@ -70,7 +92,13 @@ if ($wallpaperBefore -and (Test-Path -LiteralPath $wallpaperBefore)) {
     Copy-Item -LiteralPath $wallpaperBefore -Destination (Join-Path $backupDir ('wallpaper-before'+[IO.Path]::GetExtension($wallpaperBefore)))
 }
 
-if (-not $preserveIcon) {
+if ($IconDirectory) {
+    $destinationIcons = Join-Path $target 'Assets\Icons'
+    New-Item -ItemType Directory -Path $destinationIcons -Force | Out-Null
+    foreach ($number in $iconTargets.Keys) {
+        Copy-Item -LiteralPath (Join-Path $IconDirectory ($number+'.ico')) -Destination (Join-Path $destinationIcons ($number+'.ico')) -Force
+    }
+} elseif (-not $preserveIcon) {
     New-Item -ItemType Directory -Path (Split-Path $icon -Parent) -Force | Out-Null
     & (Join-Path $root 'New-FolderIcon.ps1') -Path $icon
 }
@@ -132,3 +160,4 @@ if ($InstallApps) {
 }
 Write-Host "Applied. Backup: $(Join-Path $backupDir 'state.json')"
 Write-Host 'Sign out and back in if folder icons or the taskbar have not refreshed.'
+
